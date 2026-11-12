@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0d0d" />
+  <meta name="description" content="Scatter: a virtual label-free microscope. Light scattering spectroscopy with real Mie theory, in your browser." />
+  <title>Scatter · label-free virtual microscope</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#/microscope" aria-label="Scatter, home">
+      <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
+        <circle cx="16" cy="16" r="6.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M1 16h8M23 16h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".55"/>
+        <path d="M9.5 8.5 4.5 4M9.5 23.5 4.5 28" stroke="#3987e5" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span>Scatter</span>
+    </a>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#/microscope" data-tab="microscope">Microscope</a>
+      <a href="#/bench" data-tab="bench">Bench</a>
+      <a href="#/learn" data-tab="learn">Learn</a>
+      <a href="#/physics" data-tab="physics">Physics</a>
+    </nav>
+  </header>
+
+  <div id="boot" class="boot" role="status" aria-live="polite">
+    <div class="boot-box">
+      <p class="boot-title">Computing Mie scattering tables</p>
+      <div class="bar"><i id="boot-bar"></i></div>
+      <p class="boot-sub" id="boot-sub">Starting physics worker…</p>
+    </div>
+  </div>
+
+  <main>
+    <section id="view-microscope" class="view" hidden></section>
+    <section id="view-bench" class="view" hidden></section>
+    <section id="view-learn" class="view" hidden></section>
+
+    <section id="view-physics" class="view prose" hidden>
+      <article>
+        <p class="eyebrow">About the physics</p>
+        <h1>What Scatter computes, and what it leaves out</h1>
+        <p class="lede">
+          Light scattering spectroscopy (LSS) reads the size of cell nuclei from the colour of the light
+          they send back, without stains and without resolving them. Scatter simulates that measurement
+          end to end: exact Mie scattering for every nucleus, a noisy polarization-gated acquisition, and a
+          least-squares inversion against precomputed Mie spectra.
+        </p>
+
+        <h2>1. The idea</h2>
+        <p>
+          Epithelial nuclei are the largest scatterers in the cell and are slightly denser than the
+          cytoplasm around them. In dysplasia, the precursor of most carcinomas, they grow from roughly
+          5–6&nbsp;µm to 10&nbsp;µm and more, crowd together and take up more chromatin. Pathologists see this on a
+          stained biopsy. Perelman and co-workers showed that the same information is carried by light
+          singly backscattered from the intact tissue: its spectrum has a fine structure, periodic in
+          inverse wavelength, whose frequency grows with nuclear size
+          <a href="#ref-perelman98">[1]</a>, and it can be used to detect dysplasia in vivo
+          <a href="#ref-backman00">[3]</a> and to image it <a href="#ref-gurjar01">[4]</a>.
+        </p>
+
+        <h2>2. One nucleus: Mie theory</h2>
+        <p>
+          Each nucleus is treated as a homogeneous sphere of diameter <i>d</i> and relative refractive index
+          <span class="mono">m = n<sub>nucleus</sub> / n<sub>medium</sub></span> in a medium of index
+          <span class="mono">n<sub>medium</sub> = 1.36</span>. Its scattering is computed with the full
+          Lorenz–Mie series, using a TypeScript port of the BHMIE algorithm of Bohren and Huffman
+          <a href="#ref-bh">[5]</a>: logarithmic derivative by downward recurrence, Riccati–Bessel functions
+          by upward recurrence, series truncated after <span class="mono">x + 4x<sup>1/3</sup> + 2</span> terms,
+          where <span class="mono">x = π d n<sub>medium</sub> / λ</span> is the size parameter (20 to 160 here).
+          No approximation of the Rayleigh–Gans or van de Hulst type is used in the simulation.
+        </p>
+        <p>
+          The code is checked by unit tests against the sample output printed in Bohren and Huffman's
+          Appendix&nbsp;A and against Wiscombe's reference cases <a href="#ref-wiscombe">[6]</a>
+          (efficiencies and asymmetry parameter to six significant figures, for size parameters from
+          0.055 to 10,000 and for dielectric, absorbing and metal-like spheres), and against the Rayleigh
+          and anomalous-diffraction limits.
+        </p>
+
+        <h2>3. What the instrument collects</h2>
+        <p>
+          Scatter models polarized LSS <a href="#ref-backman99">[2]</a><a href="#ref-gurjar01">[4]</a>.
+          The tissue is illuminated with linearly polarized white light and the backscattered light is
+          analysed parallel and perpendicular to the incident polarization. Singly scattered light keeps its
+          polarization; light that diffused in the underlying tissue has lost it and splits equally between
+          the two channels:
+        </p>
+        <p class="eq">I<sub>∥</sub>(λ) = S(λ) + ½ B(λ) &nbsp;&nbsp;&nbsp; I<sub>⊥</sub>(λ) = ½ B(λ) &nbsp;&nbsp;&nbsp; ΔI(λ) = I<sub>∥</sub> − I<sub>⊥</sub> = S(λ)</p>
+        <p>
+          For one sphere, with amplitude functions S<sub>1</sub>, S<sub>2</sub> and
+          <span class="mono">k = 2π n<sub>medium</sub>/λ</span>, averaging over the azimuth of an
+          axially symmetric collection cone gives the residual
+        </p>
+        <p class="eq">σ<sub>Δ</sub>(λ, d) = (2π / k²) ∫ [ ¼ (|S<sub>1</sub>|² + cos²θ |S<sub>2</sub>|²) + ½ cosθ Re(S<sub>1</sub>S<sub>2</sub>*) ] sinθ dθ</p>
+        <p>
+          integrated from 177.5° to 180° (a 2.5° half-angle cone, 6-point Gauss–Legendre quadrature, verified
+          against 24 points). At exact backscattering it reduces to |S<sub>1</sub>(180°)|²/k².
+          The signal at a probe position is the incoherent sum of σ<sub>Δ</sub> over the nuclei under the
+          probe, weighted by a Gaussian spot profile (σ = 13&nbsp;µm). The spectrometer samples 400–800&nbsp;nm
+          every nanometre.
+        </p>
+        <p>
+          The diffuse background B(λ) is set to 25 times the single-scattering signal of a normal site, so
+          that nuclei contribute a few percent of the detected light, as reported experimentally. Its shape
+          (a smooth rise towards the red with hemoglobin-like absorption dips) is illustrative: it cancels in
+          ΔI. What does not cancel is its photon noise. Both channels receive Poisson noise, and the
+          exposure slider sets the number of detected photons per spectral channel.
+        </p>
+
+        <h2>4. Why the fringes encode size</h2>
+        <p>
+          For a soft sphere (m close to 1), backscattering is dominated by two weak reflections, at the
+          front and at the back surface. They interfere with a phase difference
+          <span class="mono">4π n<sub>nucleus</sub> d / λ</span>, so the spectrum oscillates in 1/λ with
+          a frequency proportional to the optical diameter. Between 400 and 800&nbsp;nm the number of fringes is
+        </p>
+        <p class="eq">N ≈ 2 n<sub>nucleus</sub> d (1/λ<sub>min</sub> − 1/λ<sub>max</sub>) ≈ 3.55 × d[µm]</p>
+        <p>
+          about 20 for a 5.5&nbsp;µm nucleus and 36 for a 10&nbsp;µm one. This two-wave picture is only the explanation
+          given in Learn mode; a unit test checks that the exact Mie spectra have this fringe count.
+        </p>
+
+        <h2>5. Inversion</h2>
+        <p>
+          The retrieved size distribution is a non-negative least-squares fit of the measured ΔI(λ) by a
+          table of Mie spectra precomputed for 211 diameters from 4 to 14.5&nbsp;µm at a nominal index
+          m&nbsp;=&nbsp;1.045:
+        </p>
+        <p class="eq">ΔI(λ) ≈ Σ<sub>k</sub> c<sub>k</sub> σ<sub>Δ</sub>(λ, d<sub>k</sub>) + cubic baseline, &nbsp; c<sub>k</sub> ≥ 0</p>
+        <p>
+          where c<sub>k</sub> is the number of nuclei of diameter d<sub>k</sub>. A cubic polynomial is projected
+          out of data and table, so only the fringes are fitted. The problem is solved greedily (matching
+          pursuit, the CLEAN algorithm of radio astronomy): the table spectrum with the best single-component
+          least-squares fit to the residual is selected, a fraction of it is subtracted, and the loop stops
+          at three standard deviations of the photon noise. Nothing is reported unless the strongest
+          component exceeds 4.5&nbsp;σ. The size resolution set by the 400–800&nbsp;nm bandwidth is about 0.3&nbsp;µm.
+        </p>
+        <p>
+          The inversion never sees the simulation's inputs. Nuclei are simulated at m&nbsp;=&nbsp;1.04 (normal) and
+          m&nbsp;=&nbsp;1.05 (dysplastic, hyperchromatic) on a 20&nbsp;nm diameter grid, while the fit assumes
+          m&nbsp;=&nbsp;1.045 on a 50&nbsp;nm grid. Because the fringe frequency depends on the product
+          n<sub>nucleus</sub>·d, a 1% error on the index shifts the retrieved size by 1%.
+          The Bench lets you see this by moving the index slider.
+        </p>
+
+        <h2>6. Limits of the model</h2>
+        <ul>
+          <li><b>Nuclei are not spheres.</b> Real nuclei are spheroidal, inhomogeneous and rough. Their fringes are
+            far less contrasted than those of ideal spheres, and real LSS spectra are correspondingly
+            smoother. Scatter shows the mechanism in its cleanest form.</li>
+          <li><b>Large nuclei dominate.</b> The backscattering cross-section grows faster than d², and with
+            (m − 1)². Where populations are mixed, small nuclei are under-counted next to large ones, so the
+            retrieved mean is biased upwards at the border of a lesion. This helps detection and hurts
+            metrology; the "ground truth" toggle shows the size of the effect.</li>
+          <li><b>Crowded probes under-count.</b> Nuclei closer in size than the 0.3&nbsp;µm resolution merge
+            into one component, and weak ones fall below the noise threshold.</li>
+          <li><b>Only nuclei scatter.</b> Mitochondria and other small organelles, which add a smooth
+            component to real spectra, are not simulated; neither are dispersion of the refractive indices,
+            absorption in the nucleus, or coherent effects between neighbouring nuclei.</li>
+          <li><b>The tissue is a single layer</b> seen en face, 800 × 600&nbsp;µm, generated procedurally.
+            Normal nuclei: 5.5 ± 0.45&nbsp;µm. Dysplastic nuclei: 10 ± 1.3&nbsp;µm, more closely packed.</li>
+        </ul>
+
+        <h2>References</h2>
+        <ol class="refs">
+          <li id="ref-perelman98">L. T. Perelman, V. Backman, M. Wallace, G. Zonios, R. Manoharan, A. Nusrat, S. Shields, M. Seiler, C. Lima, T. Hamano, I. Itzkan, J. Van Dam, J. M. Crawford, M. S. Feld, “Observation of periodic fine structure in reflectance from biological tissue: a new technique for measuring nuclear size distribution,” <i>Phys. Rev. Lett.</i> <b>80</b>, 627–630 (1998).</li>
+          <li id="ref-backman99">V. Backman, R. Gurjar, K. Badizadegan, I. Itzkan, R. R. Dasari, L. T. Perelman, M. S. Feld, “Polarized light scattering spectroscopy for quantitative measurement of epithelial cellular structures in situ,” <i>IEEE J. Sel. Top. Quantum Electron.</i> <b>5</b>, 1019–1026 (1999).</li>
+          <li id="ref-backman00">V. Backman, M. B. Wallace, L. T. Perelman, <i>et al.</i>, “Detection of preinvasive cancer cells,” <i>Nature</i> <b>406</b>, 35–36 (2000).</li>
+          <li id="ref-gurjar01">R. S. Gurjar, V. Backman, L. T. Perelman, I. Georgakoudi, K. Badizadegan, I. Itzkan, R. R. Dasari, M. S. Feld, “Imaging human epithelial properties with polarized light-scattering spectroscopy,” <i>Nature Medicine</i> <b>7</b>, 1245–1248 (2001).</li>
+          <li id="ref-bh">C. F. Bohren, D. R. Huffman, <i>Absorption and Scattering of Light by Small Particles</i> (Wiley, 1983), Appendix A (BHMIE).</li>
+          <li id="ref-wiscombe">W. J. Wiscombe, “Improved Mie scattering algorithms,” <i>Appl. Opt.</i> <b>19</b>, 1505–1509 (1980); NCAR Technical Note NCAR/TN-140+STR (1979).</li>
+          <li id="ref-vdh">H. C. van de Hulst, <i>Light Scattering by Small Particles</i> (Wiley, 1957; Dover, 1981).</li>
+        </ol>
+        <p class="fineprint">
+          Scatter is an educational simulation. It is not a medical device and does not process patient data.
+          All computation runs in your browser.
+        </p>
+      </article>
+    </section>
+  </main>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
